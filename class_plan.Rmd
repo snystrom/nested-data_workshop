@@ -1,0 +1,86 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r, setup}
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(gapminder)
+```
+
+# Functional programming
+
+```{r}
+myFun <- function(x, f, ...){
+ f(x, ...)
+}
+
+names <- c("Alice", "Bob", "Charlie")
+toupper(names)
+myFun(names, toupper)
+myFun(names, rep, 2)
+myFun(names, rep, each = 2)
+```
+
+
+
+# nested dataframes
+## What is a data.frame?
+
+## nested data frames are just lists of data frames 
+```{r}
+(by_country <- gapminder %>% 
+  dplyr::group_by(country, continent) %>% 
+  tidyr::nest())
+```
+```{r}
+by_country$data[1]
+```
+
+## map functions work on lists
+```{r}
+map(by_country$data, ~{
+  df <- .
+  mean(df$lifeExp)
+})
+```
+## using map inside mutate functions makes powerful combo
+```{r}
+by_country %>% 
+  dplyr::mutate(avg_lifeExp = map(data, ~{mean(.$lifeExp)}))
+```
+## map_<type> returns non-list objects
+```{r}
+by_country %>% 
+  dplyr::mutate(avg_lifeExp = map_dbl(data, ~{mean(.$lifeExp)})) 
+```
+
+```{r}
+by_country %>% 
+  dplyr::mutate(avg_lifeExp = map_dbl(data, ~{mean(.$lifeExp)})) %>% 
+  tidyr::unnest(data) 
+```
+
+
+# nonstandard evaluation (ggplot, dplyr)
+
+## iterate through all columns for plotting
+```{r}
+x.var <- names(diamonds)
+
+map(x.var, ~{
+  ggplot(diamonds, aes_string(., "price")) +
+    geom_point()
+})
+```
+
+## write function that fits lm to data 
+input: data, lm, lm_name 
+
+output: lm, broom::glance columns
+```{r}
+
+```
+

@@ -1,0 +1,432 @@
+---
+title: "Functional Programming examples"
+output: html_notebook
+---
+```{r}
+library(magrittr)
+```
+
+```{r}
+myFun <- function(x, fun, ...){
+  fun(x, ...)
+}
+```
+
+```{r}
+myFun(c(0,20,101), mean)
+myFun(c(0,20,101), median)
+myFun(c(0,20,101), rep, 2)
+```
+
+```{r}
+library(purrr)
+rep2 <- function(x){rep(x, 2)}
+funs <- c(mean, median, rep2)
+dat <- c(0,20,101)
+map2(list(dat), funs, ~{.y(.x)})
+```
+
+# What is a data.frame anyway?
+
+```{r}
+names <- c("Alice", "Bob", "Charlie")
+age <- c(10, 20, 30)
+pets <- c("cat", "dog", "fish")
+(people <- data.frame(names, age, pets))
+```
+```{r}
+people %>% str
+```
+
+```{r}
+people %>% class
+```
+```{r}
+people %>% typeof
+```
+
+
+## base data.frames coerce types so don't like this:
+```{r}
+pets <- list("cat", "dog", c("cat", "dog"))
+(people <- data.frame(names, age, pets))
+```
+## Can force with I()
+```{r}
+(people <- data.frame(names, age, I(pets)))
+```
+```{r}
+people %>% str
+```
+
+## Tibble won't coerce data types
+```{r}
+(people <- tibble::tibble(names, age, pets))
+```
+
+```{r}
+str(people)
+```
+
+# data.frames are just named lists
+by storing multiple things in a "cell", we can keep data organized in a single object
+
+
+# operating on data subsets
+```{r}
+iris 
+```
+
+# Iris dataset:
+```{r}
+library(ggplot2)
+iris %>% 
+  ggplot(aes(Petal.Length, Sepal.Length)) +
+    geom_point(aes(color = Species))
+```
+
+# fit lm to each species
+## split-apply-combine
+```{r}
+by_species <- iris %>% 
+  split(., .$Species)
+
+by_species
+```
+```{r}
+by_species_lm <- lapply(by_species, function(x){
+  x %>% 
+    lm(Sepal.Length~Petal.Length, data = .)
+})
+
+by_species_lm
+```
+# Now you've got two objects:
+## What if you want to test multiple models? Manually type all this each time?
+```{r}
+by_species
+by_species_lm
+```
+
+
+
+# Nested Data
+Want to run the lm function on each row of `by_species$data`
+```{r}
+by_species <- iris %>% 
+  dplyr::group_by(Species) %>% 
+  tidyr::nest()
+
+by_species
+```
+
+
+# Solutions for operating on multiple inputs:
+
+## vectorized functions
+```{r}
+toupper(names)
+```
+## for loop
+```{r}
+upperNames <- rep("", length = length(names))
+
+for (i in 1:length(names)) {
+  upperNames[i] <- toupper(names[i])
+}
+
+upperNames
+```
+
+## Functional programming bypasses for-loop boilerplate
+```{r}
+myMap <- function(x, f){
+  
+  out <- rep("", length = length(x))
+  
+  for (i in 1:length(x)){
+    out[i] <- f(x[i])
+  }
+  return(out)
+}
+
+names
+myMap(names, toupper) 
+myMap(names, tolower) 
+```
+
+## map function
+`purrr` package provides a framework for many `map` functions
+```{r}
+library(purrr)
+map(people$names, toupper) # operates on lists, returns list
+map_chr(people$names, toupper) # operates on lists, returns character
+```
+# return to iris example:
+```{r}
+by_species
+```
+```{r}
+by_species %>% 
+  dplyr::mutate(fit = lm(Sepal.Length~Petal.Length, data = data))
+```
+
+
+```{r}
+fit_model <- function(df){
+  lm(Sepal.Length~Petal.Length, data = df)
+}
+
+(by_species %<>% 
+  dplyr::mutate(fit = map(data, fit_model)))
+```
+```{r}
+# use broom::glance to return tidy-data summary of each lm
+(by_species %<>%
+  dplyr::mutate(fit_summary = map(fit, broom::glance)))
+```
+
+```{r}
+by_species$fit_summary 
+```
+
+# return specfic summary stats
+```{r}
+by_species %<>% 
+  dplyr::mutate(rsq = map_dbl(fit_summary, ~{.$r.squared}))
+```
+
+# unnest to get tidy data version of each lm
+```{r}
+by_species %>% 
+  tidyr::unnest(fit_summary)
+```
+
+```{r, fig.asp = 1}
+by_species %>% 
+  tidyr::unnest(data) %>% 
+  dplyr::mutate(Species = paste0(Species, " (", round(rsq, 2), ")")) %>% 
+  ggplot(aes(Petal.Length, Sepal.Length)) +
+    geom_point(aes(color = Species)) +
+    geom_smooth(aes(group = Species, color = Species), method = "lm", se = F) +
+    xlim(0,8) +
+    ylim(4,8) +
+    theme(legend.position = "bottom")
+```
+
+
+```{r}
+library(ggplot2)
+gapminder <- gapminder::gapminder
+gapminder
+```
+
+# functionals for plotting many vars
+```{r}
+library(ggplot2)
+y.vars <- names(gapminder)[4:6]
+y.vars
+
+map(y.vars, ~{
+  y.var <- .
+  gapminder %>% 
+    ggplot(aes_string("year", y.var)) +
+      geom_line(aes(color = country, group = country)) +
+      theme(legend.position = "none") + 
+      facet_wrap(~continent, scales = "free_y") 
+})
+```
+
+```{r}
+print("TEST")
+```
+
+
+
+
+```{r}
+by_continent <- gapminder %>% 
+  dplyr::group_by(continent) %>% 
+  tidyr::nest() %>% 
+  dplyr::mutate(plot = map2(continent, data, ~{
+    .y %>% 
+      ggplot(aes(year, lifeExp)) +
+        geom_line(aes(color = country)) +
+        ggtitle(.x) +
+        theme(legend.position = "none")
+  }))
+
+by_continent$plot  
+```
+
+```{r}
+mod <- function(data){
+  lm(lifeExp~year, data = data)
+}
+```
+
+```{r}
+by_country <- gapminder %>% 
+  dplyr::group_by(country, continent) %>% 
+  tidyr::nest() %>% 
+  dplyr::mutate(lm_year_lifeExp = map(data, mod)) %>% 
+  dplyr::mutate(lm_year_lifeExp_glance = map(lm_year_lifeExp, broom::glance)) %>% 
+  dplyr::mutate(lm_year_lifeExp_goodFit = map_lgl(lm_year_lifeExp_glance, ~{.x$r.squared > 0.75}))
+
+by_country %>% 
+  ggplot(aes(continent)) +
+    geom_bar(aes(fill = lm_year_lifeExp_goodFit))
+```
+
+# Advanced use:
+```{r}
+# make function that will fit linear model and add nested residuals
+lm_fit <- function(df, lm, lm_name){
+ 
+  # create column names 
+  glance_name <- paste0(lm_name, "_glance") 
+  fit_name <- paste0(lm_name, "_goodFit") 
+  resid_name <- paste0(lm_name, "_resid") 
+  
+  # aggregate column names (creation & aggregation can be done in 1 step with a map function, but we'll keep it simple) 
+  colNames <- c(glance_name, fit_name, resid_name)
+  
+  
+  # use non-standard evaluation to create columns for each lm 
+  df_out <- df %>% 
+    dplyr::mutate(!! lm_name := map(data, lm)) %>% 
+    dplyr::mutate(!! glance_name := map(.[[lm_name]], broom::glance)) %>% 
+    dplyr::mutate(!! fit_name := map_lgl(.[[glance_name]], ~{.x$r.squared > 0.75})) %>% 
+    dplyr::mutate(!! resid_name := map2(data, .[[lm_name]], modelr::add_residuals)) %>% 
+    dplyr::select(colNames) # for this example, we'll only return the columns we create
+  
+  return(df_out)
+}
+
+# make functions for each model:
+mod <- function(df){
+  lm(lifeExp~year, data = df)
+}
+
+mod2 <- function(df){
+  lm(lifeExp~year+gdpPercap, data = df)
+}
+
+# make data.frame containing & describing each model:
+mods <- tibble::tribble(~"mod", ~"name",
+                mod, "lm_lifeExp_year",
+                mod2, "lm_lifeExp_year.gdp")
+
+# get data in nested format:
+by_country <- gapminder %>% 
+  dplyr::group_by(continent, country) %>% 
+  tidyr::nest()
+
+
+# run each lm on nested data
+lms <- map2(mods$mod, mods$name, ~{
+  lm_fit(by_country, .x, .y)
+})
+
+# add lm information to nested data
+by_country %<>% dplyr::bind_cols(lms)
+```
+
+# compare lms
+One advantage of having the `mods` data.frame is that you can split your data on it later
+```{r}
+map(mods$name, ~{
+  
+  colname <- paste0(., "_resid")
+  
+  by_country %>% 
+    tidyr::unnest_(colname) %>% 
+    ggplot(aes(year, resid)) +
+    geom_line(aes(group = country), alpha = 1/10) +
+    geom_smooth(method = "gam") +
+    ggtitle(colname)
+})
+```
+
+
+```{r}
+# test passing map function as string to mutate_
+
+
+dat %>% 
+  dplyr::mutate_(mapTest = glue::glue("map(data, {lm_fun})", column = "out", lm_fun = "mod"))
+
+
+dat %>% 
+  dplyr::mutate(!!colNames[1] := map(data, mod)) %>% 
+  dplyr::mutate(!!colNames[2] := map(colNames[1], broom::glance))
+                  
+                  
+```
+
+
+```{r}
+library(gapminder)
+library(dplyr)
+library(purrr)
+
+colNames <- c("my_lm", "my_lm_glance")
+col1 <- colNames[1]
+col2 <- colNames[2]
+
+mod <- function(data){
+  lm(lifeExp~year, data = data)
+}
+
+gapminder %>%
+  dplyr::group_by(country, continent) %>% 
+  tidyr::nest() %>% 
+  dplyr::mutate(!! col1 := map(data, mod)) %>% 
+  dplyr::mutate(!! col2 := map(.[[col1]], broom::glance)) 
+  
+```
+
+```{r}
+l1 <- list(list(a = 1L), list(a = NULL, b = 2L), list(b = 3L))
+col <- "a"
+l1 %>% map(col, .default = "???")
+l1 %>% map_int("b", .default = NA)
+l1 %>% map_int(2, .default = NA)
+
+```
+
+
+
+
+```{r}
+lm_fit <- function(df, lm, lm_name){
+  
+  colNames <- map2(lm_name, c("", "_glance", "_goodFit", "_resid"), ~{glue::glue("{name}{colType}", name = .x, colType = .y)}) %>% 
+    unlist
+  
+   
+  df_out <- df %>% 
+    dplyr::mutate(!! colNames[1] := map(data, lm)) %>% 
+    dplyr::mutate(!! colNames[2] := map(.[[colNames[1]]], broom::glance)) %>% 
+    dplyr::mutate(!! colNames[3] := map_lgl(.[[colNames[2]]], ~{.x$r.squared > 0.75})) %>% 
+    dplyr::mutate(!! colNames[4] := map2(data, .[[colNames[1]]], modelr::add_residuals)) %>% 
+    dplyr::select(colNames)
+  
+  return(df_out)
+}
+```
+
+# more lm examples:
+```{r}
+lm(lifeExp ~ year, gapminder) %>% summary
+lm(lifeExp ~ year + gdpPercap, gapminder) %>% summary
+```
+
+```{r}
+fit_lm <- function(df, fun){
+  lm(fun, data = df)
+}
+
+funs <- c(lifeExp ~ year, lifeExp ~ year + gdpPercap)
+map(funs, ~{fit_lm(gapminder, .) %>% summary})
+```

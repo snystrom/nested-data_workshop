@@ -1,0 +1,32 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+manage <- c("CM", "FM", "FCM", "PAS", "PR")
+som_means <- c(3.7, 3.4, 3.5, 4, 10)
+som_se <- c(0.14, 0.42, 0.38, 0.25, 0.46)
+ph_means <- c(6, 5.96, 7.06, 6.85, 6.61)
+ph_se <- c(0.15, 0.05, 0.43, 0.36, 0.45)
+year_mod <- c(1, 1, 1, 0, 0)
+
+manage_data <- tibble::tibble(manage, som_means, som_se, ph_means, ph_se)
+
+blackland <- manage_data %>%
+  dplyr::mutate(year = map(list(1:20), ~{1990 + .})) %>% 
+  dplyr::mutate(som = map2(som_means, som_se, 
+                           ~{rnorm(20, mean = .x, sd = .y)})) %>% 
+  dplyr::mutate(ph = map2(ph_means, ph_se, 
+                          ~{rnorm(20, mean = .x, sd = .y)})) %>% 
+  tidyr::unnest(year, som, ph) %>% 
+  dplyr::select(manage, som, year, ph)
+
+blackland
+```
+```{r}
+sim %>% 
+  ggplot(aes(year, som)) +
+    geom_line(aes(color = manage))
+```
+

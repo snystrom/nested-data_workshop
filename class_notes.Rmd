@@ -1,0 +1,190 @@
+---
+title: "Functional Programming workflow for data analysis"
+author: "Spencer Nystrom"
+date: "May 2nd, 2018"
+output: html_notebook
+---
+
+# IF YOU HAVEN'T ALREADY:
+```{r, eval=F}
+pkg <- c("tidyverse", "gapminder")
+install.packages(pkg)
+```
+
+```{r, setup}
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(gapminder)
+```
+
+
+# While everyone is getting ready:
+ - play around with the `gapminder` dataset
+```{r}
+head(gapminder) 
+```
+
+# Functional programming
+```{r}
+names <- c("Alice", "Bob", "Charlie")
+
+toupper(names)
+```
+
+```{r}
+myFun <- function(x, fun){
+  fun(x)
+}
+
+myFun(names, toupper)
+myFun(names, tolower)
+myFun(c(0, 100), mean)
+```
+
+```{r}
+library(magrittr)
+gapminder %>%
+  dplyr::filter(continent == "Asia") %>% 
+  .$pop %>% 
+  mean
+```
+
+```{r}
+gapminder %>% 
+  dplyr::group_by(continent, year) %>% 
+  dplyr::summarise(mean_pop = mean(pop))
+```
+
+```{r}
+gapminder %>% 
+  ggplot(aes(year, lifeExp)) +
+    geom_line(aes(color = country, group = country)) +
+    theme(legend.position = "none")
+```
+
+```{r}
+continent_list <- gapminder %>% 
+  split(., .$continent)
+
+continent_list$Africa
+```
+
+```{r}
+
+for (i in 1:length(continent_list)){
+  lm(continent_list[i]$lifeExp~continent_list[i]$year)
+}
+```
+
+```{r}
+myMap <- function(object, fun, ...){
+  out <- rep("", length(object))
+  
+  for (i in 1:length(object)){
+    out[i] <- fun(object[i]) 
+  }
+  return(out)
+}
+
+upname <-  myMap(names, toupper)
+upname
+```
+
+```{r}
+library(purrr)
+map(names, toupper)
+```
+
+```{r}
+gapminder %>% class
+gapminder %>% typeof
+```
+
+```{r}
+myList <- list(names, c(gapminder))
+myList
+```
+
+```{r}
+gapminder %>% 
+  as_tibble(.)
+```
+
+
+
+```{r}
+by_country <- gapminder %>% 
+  group_by(country) %>% 
+  tidyr::nest()
+```
+
+```{r}
+by_country$data[1]
+```
+
+```{r}
+by_country$data[1]
+```
+
+```{r}
+map(by_country$data, ~{
+  df <- . 
+  mean(df$lifeExp)
+})
+```
+```{r}
+by_country
+```
+
+```{r}
+by_country %>% 
+  dplyr::mutate(mean_lifeExp = map_dbl(data, ~{
+    df <- .
+    mean(df$lifeExp)
+  }))
+```
+
+```{r}
+df <- gapminder %>% 
+  dplyr::filter(country == "Belgium")
+
+df
+
+model_fit <- lm(lifeExp ~ year, data = df)
+model_fit
+```
+
+```{r}
+by_country %>% 
+  dplyr::mutate(linearModel = map(data, ~{
+    df <- .
+    lm(lifeExp ~ year, df)
+  })) %>% 
+  tidyr::unnest(data)
+```
+
+```{r}
+by_country %>% 
+  dplyr::mutate(newCol = map_dbl(data, ~{mean(.$pop)})) %>% 
+  tidyr::unnest(data)
+  
+```
+
+
+# Bonus:
+Write functions that write functions
+```{r}
+makeFunction <- function(x, ...){
+  funOut <- function(dat){
+    dat * x
+  }
+}
+
+by2 <- makeFunction(2)
+by2(2)
+
+by3 <- makeFunction(3)
+by3(2)
+```
+
